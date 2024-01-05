@@ -17,8 +17,8 @@ class PairTrade:
         self.__z_score_threshold = z_score_threshold
         self.__lookback_window = lookback_window
         self.__timeframe = timeframe
-        self.__current_date = datetime.datetime.strptime(str(pd.Timestamp.today())[:10], '%Y-%m-%d')
-        self.__actual_pairs = pd.read_feather(f"actual_pairs_2023_Q4.feather")
+        self.__current_date = datetime.datetime.strptime(str(pd.Timestamp.today())[:16], '%Y-%m-%d %H:%M')
+        self.__actual_pairs = pd.read_feather(f"actual_pairs_2023_Q4.feather").sample(10000)
 
     def __get_trade_data_pair(self, symbols, start_date=None, end_date=None, timeframe=None):
         """
@@ -27,9 +27,10 @@ class PairTrade:
         :return: df with historical data
         """
         if start_date is None or end_date is None or timeframe is None:
-            # define start and end date through current date and defined lookback_window
-            start_date = self.__current_date - pd.Timedelta(days=self.__lookback_window)
-            end_date = self.__current_date
+            # define start and end date through current date and defined lookback_window (must consider 15 min delay)
+            end_date_trading = self.__current_date - pd.Timedelta(minutes=15)
+            end_date = end_date_trading.astimezone(datetime.timezone.utc)
+            start_date = end_date_trading - pd.Timedelta(days=1)
             timeframe = self.__timeframe
 
         # get stock data
@@ -97,7 +98,7 @@ class PairTrade:
               return pd.Series([False, "F", "F"])
 
         # when Stock_b trades above Stock_a:
-        elif sprd<0.25:
+        elif sprd < 0.25:
           if data['z-scores'].iloc[-1] > self.__z_score_threshold:
             # buy 'Stock_a' and short 'Stock_b'
             return pd.Series([True, "B", "S"])
@@ -143,22 +144,19 @@ class PairTrade:
         # get trade signal for pairs
         self.__actual_pairs[["Signal", "Type_a", "Type_b"]] = self.__actual_pairs[["Stock_a", "Stock_b"]].apply(lambda row:
                                                                         self.__get_buy_signal(row), axis=1)
-        self.__actual_pairs["Signal"] = True
-        self.__actual_pairs.at[3, "Type_a"] = "B"
-        self.__actual_pairs.at[3, "Type_b"] = "S"
-        self.__actual_pairs.at[4, "Type_a"] = "S"
-        self.__actual_pairs.at[4, "Type_b"] = "B"
+
         traded_pairs = self.__actual_pairs[self.__actual_pairs["Signal"]]
 
         # check if current day is trading day
-        start_date_calendar = self.__current_date - pd.Timedelta(days=1)
+        start_date_calendar = pd.Timestamp(str(self.__current_date)[:10]) - pd.Timedelta(days=1)
         calendar_request = GetCalendarRequest()
         calendar_request.start = start_date_calendar
-        calendar_request.end = self.__current_date
+        calendar_request.end = pd.Timestamp(str(self.__current_date)[:10])
         trading_calendar = self.__trading_client.get_calendar(calendar_request)
         most_recent_trading_day = trading_calendar[-1].date
 
-        if str(most_recent_trading_day) == str(self.__current_date)[:10]:
+        # if current day is not a trading day no pairs are traded
+        if str(most_recent_trading_day) == str(self.__current_date)[:10] and not traded_pairs.empty:
             # get price for pairs
             traded_pairs[["Price_a", "Price_b"]] = traded_pairs[["Stock_a", "Stock_b", "Type_a", "Type_b"]].apply(lambda row:
                                                                             self.__get_current_price(row), axis=1)
@@ -168,48 +166,53 @@ class PairTrade:
             max_amount_invested = float(account_info.equity) * 0.7
 
             traded_pairs["Sum_Price"] = abs(traded_pairs["Price_a"]) + abs(traded_pairs["Price_b"])
+            traded_pairs.dropna(inplace=True)
 
-            pairs_buy = traded_pairs.groupby(traded_pairs["Sum_Price"].cumsum() <= max_amount_invested) \
-                                    .Sum_Price.groups[1].values
-            traded_pairs = traded_pairs.loc[pairs_buy, :]
+            if not traded_pairs.empty:
+                pairs_buy = traded_pairs.groupby(traded_pairs["Sum_Price"].cumsum() <= max_amount_invested) \
+                                        .Sum_Price.groups[1].values
 
-            # filter for buy-short pairs
-            b_s_pairs = traded_pairs[(traded_pairs["Type_a"] == "B") & (traded_pairs["Type_b"] == "S")].copy()
-            s_b_pairs = traded_pairs[(traded_pairs["Type_a"] == "S") & (traded_pairs["Type_b"] == "B")].copy()
+                traded_pairs = traded_pairs.loc[pairs_buy, :]
 
-            # create order list for buy-short pairs
-            order_list_b_s = [{row[0]: 1/row[2], row[1]: -1} for row in b_s_pairs[["Stock_a", "Stock_b", "Beta"]].itertuples(index=False)]
-            order_list_s_b = [{row[0]: -1, row[1]: row[2]} for row in s_b_pairs[["Stock_a", "Stock_b", "Beta"]].itertuples(index=False)]
+                # filter for buy-short pairs
+                b_s_pairs = traded_pairs[(traded_pairs["Type_a"] == "B") & (traded_pairs["Type_b"] == "S")].copy()
+                s_b_pairs = traded_pairs[(traded_pairs["Type_a"] == "S") & (traded_pairs["Type_b"] == "B")].copy()
 
-            # b_s_trades_buy_a = {val[0]: 1/val[1] for key, val in b_s_pairs[b_s_pairs["Type_a"] == "B"][["Stock_a", "Beta"]].T.to_dict("list").items()}
-            # b_s_trades_buy_b = {val[0]: val[1] for key, val in b_s_pairs[b_s_pairs["Type_b"] == "B"][["Stock_b", "Beta"]].T.to_dict("list").items()}
-            # b_s_trades_sell_a = {symbol: -1 for symbol in b_s_pairs[b_s_pairs["Type_a"] == "S"]["Stock_a"]}
-            # b_s_trades_sell_b = {symbol: -1 for symbol in b_s_pairs[b_s_pairs["Type_b"] == "S"]["Stock_b"]}
+                # create order list for buy-short pairs
+                order_list_b_s = [{row[0]: 1/row[2], row[1]: -1} for row in b_s_pairs[["Stock_a", "Stock_b", "Beta"]].itertuples(index=False)]
+                order_list_s_b = [{row[0]: -1, row[1]: row[2]} for row in s_b_pairs[["Stock_a", "Stock_b", "Beta"]].itertuples(index=False)]
 
-            # b_s_order_list = b_s_trades_buy_a | b_s_trades_buy_b | b_s_trades_sell_a | b_s_trades_sell_b
+                # b_s_trades_buy_a = {val[0]: 1/val[1] for key, val in b_s_pairs[b_s_pairs["Type_a"] == "B"][["Stock_a", "Beta"]].T.to_dict("list").items()}
+                # b_s_trades_buy_b = {val[0]: val[1] for key, val in b_s_pairs[b_s_pairs["Type_b"] == "B"][["Stock_b", "Beta"]].T.to_dict("list").items()}
+                # b_s_trades_sell_a = {symbol: -1 for symbol in b_s_pairs[b_s_pairs["Type_a"] == "S"]["Stock_a"]}
+                # b_s_trades_sell_b = {symbol: -1 for symbol in b_s_pairs[b_s_pairs["Type_b"] == "S"]["Stock_b"]}
 
-            # filter for buy-short pairs
-            # b_b_pairs = traded_pairs[(traded_pairs["Type_a"] == "B") & (traded_pairs["Type_b"] == "B")].copy()
-            #
-            # # create order list for buy-buy pairs
-            # b_b_trades_buy_a = {symbol: 1 for symbol in b_b_pairs["Stock_a"]}
-            # b_b_trades_buy_b = {row["Stock_b"]: row["Beta"] for row in b_b_pairs[["Stock_b", "Beta"]]}
-            #
-            # b_b_order_list = b_b_trades_buy_a | b_b_trades_buy_b
-            #
-            # # filter for short-short pairs
-            # s_s_pairs = traded_pairs[(traded_pairs["Type_a"] == "S") & (traded_pairs["Type_b"] == "S")].copy()
-            #
-            # # create order list for buy-buy pairs
-            # s_s_trades_buy_a = {symbol: 1 for symbol in s_s_pairs["Stock_a"]}
-            # s_s_trades_buy_b = {row["Stock_b"]: row["Beta"] for row in s_s_pairs[["Stock_b", "Beta"]]}
-            #
-            # s_s_order_list = s_s_trades_buy_a | s_s_trades_buy_b
-            #
-            # # merge order lists
-            # order_list = b_s_order_list | b_b_order_list | s_s_order_list
+                # b_s_order_list = b_s_trades_buy_a | b_s_trades_buy_b | b_s_trades_sell_a | b_s_trades_sell_b
 
-            order_lists = order_list_b_s + order_list_s_b
+                # filter for buy-short pairs
+                # b_b_pairs = traded_pairs[(traded_pairs["Type_a"] == "B") & (traded_pairs["Type_b"] == "B")].copy()
+                #
+                # # create order list for buy-buy pairs
+                # b_b_trades_buy_a = {symbol: 1 for symbol in b_b_pairs["Stock_a"]}
+                # b_b_trades_buy_b = {row["Stock_b"]: row["Beta"] for row in b_b_pairs[["Stock_b", "Beta"]]}
+                #
+                # b_b_order_list = b_b_trades_buy_a | b_b_trades_buy_b
+                #
+                # # filter for short-short pairs
+                # s_s_pairs = traded_pairs[(traded_pairs["Type_a"] == "S") & (traded_pairs["Type_b"] == "S")].copy()
+                #
+                # # create order list for buy-buy pairs
+                # s_s_trades_buy_a = {symbol: 1 for symbol in s_s_pairs["Stock_a"]}
+                # s_s_trades_buy_b = {row["Stock_b"]: row["Beta"] for row in s_s_pairs[["Stock_b", "Beta"]]}
+                #
+                # s_s_order_list = s_s_trades_buy_a | s_s_trades_buy_b
+                #
+                # # merge order lists
+                # order_list = b_s_order_list | b_b_order_list | s_s_order_list
+
+                order_lists = order_list_b_s + order_list_s_b
+            else:
+                order_lists = []
         # no trades are executed if exchanges are closed today
         else:
             order_lists = []
@@ -294,7 +297,6 @@ class PairTrade:
     def trade_pairs(self):
         """
         Method that creates an order_list and trades it
-        :return: two list with information on closed and adjusted positions
         """
         order_lists = self.__create_order_list()
         for order_list in order_lists:
