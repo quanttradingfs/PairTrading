@@ -18,7 +18,7 @@ class PairTrade:
         self.__lookback_window = lookback_window
         self.__timeframe = timeframe
         self.__current_date = datetime.datetime.strptime(str(pd.Timestamp.today())[:16], '%Y-%m-%d %H:%M')
-        self.__actual_pairs = pd.read_feather(f"actual_pairs_2023_Q4.feather").sample(10000)
+        self.__actual_pairs = pd.read_feather(f"actual_pairs_2023_Q4.feather").sample(3000)
 
     def __get_trade_data_pair(self, symbols, start_date=None, end_date=None, timeframe=None):
         """
