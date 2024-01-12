@@ -5,7 +5,7 @@ on:
     branches:
       - master
   schedule:
-    - cron: '0 17 * * 1-5' # At 12:00 pm EST equivalent to 5:00 pm UTC
+    - cron: '* * * *' # At 12:00 pm EST equivalent to 5:00 pm UTC
 
 jobs:
   build:
