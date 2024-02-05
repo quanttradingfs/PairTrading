@@ -83,9 +83,9 @@ class PairTrade:
         data['z-scores'] = (data['Spread'] - data['Spread'].mean())/data['Spread'].std()
 
         # sprd indicates % how often Stock_a trades above Stock_b (sprd>0.5) or vice versa (sprd<0.5)
-        sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count() #TODO: make sure it does not divide by zero
+        sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count() #TODO: #1 make sure it does not divide by zero
 
-        # when Stock_a trades above Stock_b:
+        # when Stock_a trades above Stock_b:‚
         if sprd > 0.75:
           if data['z-scores'].iloc[-1] > self.__z_score_threshold:
               # short 'Stock_a' and buy 'Stock_b'
