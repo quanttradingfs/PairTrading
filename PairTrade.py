@@ -7,7 +7,6 @@ from alpaca.trading.client import TradingClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.requests import OrderRequest, GetCalendarRequest, ClosePositionRequest
-#note test 1
 
 class PairTrade:
 
@@ -84,7 +83,7 @@ class PairTrade:
         data['z-scores'] = (data['Spread'] - data['Spread'].mean())/data['Spread'].std()
 
         # sprd indicates % how often Stock_a trades above Stock_b (sprd>0.5) or vice versa (sprd<0.5)
-        sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count()
+        sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count() #TODO: make sure it does not divide by zero
 
         # when Stock_a trades above Stock_b:
         if sprd > 0.75:
