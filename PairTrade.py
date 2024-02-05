@@ -24,7 +24,7 @@ class PairTrade:
         """
         Method to get historical stock data for a given pair of stocks over the horizon of self.__lookback_window
         :param symbols: list with symbols of the two stocks
-        :return: df with historical data.
+        :return: df with historical data
         """
         if start_date is None or end_date is None or timeframe is None:
             # define start and end date through current date and defined lookback_window (must consider 15 min delay)
