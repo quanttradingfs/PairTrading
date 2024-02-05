@@ -5,7 +5,7 @@ on:
     branches:
       - master
   schedule:
-    - cron: '* * * *' # At 12:00 pm EST equivalent to 5:00 pm UTC
+    - cron: '0 5 * * 1' # Every week on Mondays at 05:00 AM German time
 
 jobs:
   build:
