@@ -7,6 +7,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.requests import OrderRequest, GetCalendarRequest, ClosePositionRequest
+#test
 
 class PairTrade:
 
@@ -26,7 +27,7 @@ class PairTrade:
         :return: df with historical data
         """
         if start_date is None or end_date is None or timeframe is None:
-            # define start and end date through current date and defined lookback_window (must consider 15 min delay)
+            # define start and end date through current date and defined lookback_window (must consider 15 min delay) 
             end_date_trading = self.__current_date - pd.Timedelta(minutes=15)
             end_date = end_date_trading.astimezone(datetime.timezone.utc)
             start_date = end_date_trading - pd.Timedelta(days=1)
