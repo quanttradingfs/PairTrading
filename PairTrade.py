@@ -1,3 +1,4 @@
+import access as a
 import pandas as pd
 import numpy as np
 import datetime
@@ -28,7 +29,7 @@ class PairTrade:
         :return: df with historical data
         """
         if start_date is None or end_date is None or timeframe is None:
-            # define start and end date through current date and defined lookback_window (must consider 15 min delay)
+            # define start and end date through current date and defined lookback_window (must consider 15 min delay) 
             end_date_trading = self.__current_date - pd.Timedelta(minutes=15)
             end_date = end_date_trading.astimezone(datetime.timezone.utc)
             start_date = end_date_trading - pd.Timedelta(days=1)
@@ -39,7 +40,7 @@ class PairTrade:
                                           start=start_date, end=end_date)
 
         bars = self.__stock_client.get_stock_bars(request_params)
-        data_df = None
+        data_df = pd.DataFrame()
 
         # check if bars is non-empty
         if bars.data:
@@ -56,7 +57,7 @@ class PairTrade:
                 data_ticker = data_ticker.add_suffix(f"_{ticker}", axis=1)
 
                 # merge trading data of ticker with parent df
-                if data_df is None:
+                if data_df.empty():
                     data_df = data_ticker
                 else:
                     data_df = data_df.merge(data_ticker, how="outer", suffixes=("", "_right"),
@@ -85,9 +86,9 @@ class PairTrade:
         data['z-scores'] = (data['Spread'] - data['Spread'].mean())/data['Spread'].std()
 
         # sprd indicates % how often Stock_a trades above Stock_b (sprd>0.5) or vice versa (sprd<0.5)
-        sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count()
+        sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count() #TODO: #1 make sure it does not divide by zero
 
-        # when Stock_a trades above Stock_b:
+        # when Stock_a trades above Stock_b:‚
         if sprd > 0.75:
           if data['z-scores'].iloc[-1] > self.__z_score_threshold:
               # short 'Stock_a' and buy 'Stock_b'
@@ -307,6 +308,6 @@ class PairTrade:
 
 
 if __name__ == "__main__":
-    keys = ["PKP3IMDMS97A7UI5Z46H", "R4EjYyMbfHg9AqXxsbygzbDI8idsBpjtrnAzXS4h"]
+    keys = a.thore
     App = PairTrade(keys)
     App.trade_pairs()
