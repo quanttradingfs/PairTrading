@@ -39,7 +39,7 @@ class PairTrade:
                                           start=start_date, end=end_date)
 
         bars = self.__stock_client.get_stock_bars(request_params)
-        data_df = None
+        data_df = pd.DataFrame()
 
         # check if bars is non-empty
         if bars.data:
@@ -56,7 +56,7 @@ class PairTrade:
                 data_ticker = data_ticker.add_suffix(f"_{ticker}", axis=1)
 
                 # merge trading data of ticker with parent df
-                if data_df is None:
+                if data_df.empty():
                     data_df = data_ticker
                 else:
                     data_df = data_df.merge(data_ticker, how="outer", suffixes=("", "_right"),
