@@ -9,7 +9,7 @@ from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.requests import OrderRequest, GetCalendarRequest, ClosePositionRequest
 #note test 1
-# test 2
+# test 12
 
 class PairTrade:
 
