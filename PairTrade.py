@@ -144,7 +144,7 @@ class PairTrade:
         :return: order_list that contains dicts where each dict contains information on a single conintegrated pair
         """
         # check if current day is trading day
-        start_date_calendar = pd.Timestamp(str(self.__current_date)[:10]) - pd.Timedelta(days=1)
+        start_date_calendar = pd.Timestamp(str(self.__current_date)[:10]) - pd.Timedelta(days=14)
         calendar_request = GetCalendarRequest()
         calendar_request.start = start_date_calendar
         calendar_request.end = pd.Timestamp(str(self.__current_date)[:10])
