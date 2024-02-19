@@ -1,3 +1,4 @@
+import access as a
 import pandas as pd
 import numpy as np
 import datetime
@@ -306,6 +307,6 @@ class PairTrade:
 
 
 if __name__ == "__main__":
-    keys = ["PKP3IMDMS97A7UI5Z46H", "R4EjYyMbfHg9AqXxsbygzbDI8idsBpjtrnAzXS4h"]
+    keys = a.thore
     App = PairTrade(keys)
     App.trade_pairs()
