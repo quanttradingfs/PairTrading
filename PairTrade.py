@@ -161,7 +161,7 @@ class PairTrade:
             traded_pairs = self.__actual_pairs[self.__actual_pairs["Signal"]]
 
             # if current day is not a trading day no pairs are traded
-            if traded_pairs.empty:
+            if not traded_pairs.empty:
                 # get price for pairs
                 traded_pairs[["Price_a", "Price_b"]] = traded_pairs[["Stock_a", "Stock_b", "Type_a", "Type_b"]].apply(lambda row:
                                                                                 self.__get_current_price(row), axis=1)
