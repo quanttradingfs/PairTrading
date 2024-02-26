@@ -57,7 +57,7 @@ class PairTrade:
                 data_ticker = data_ticker.add_suffix(f"_{ticker}", axis=1)
 
                 # merge trading data of ticker with parent df
-                if data_df.empty():
+                if data_df.empty:
                     data_df = data_ticker
                 else:
                     data_df = data_df.merge(data_ticker, how="outer", suffixes=("", "_right"),
