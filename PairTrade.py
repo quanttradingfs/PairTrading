@@ -12,10 +12,11 @@ from alpaca.trading.requests import OrderRequest, GetCalendarRequest, ClosePosit
 
 class PairTrade:
 
-    def __init__(self, keys, z_score_threshold=1, lookback_window=30, timeframe=TimeFrame.Hour):
+    def __init__(self, keys, z_score_threshold_open=2, z_score_threshold_close=0.5, lookback_window=30, timeframe=TimeFrame.Hour):
         self.__stock_client = StockHistoricalDataClient(keys[0], keys[1])
         self.__trading_client = TradingClient(keys[0], keys[1])
-        self.__z_score_threshold = z_score_threshold
+        self.__z_score_threshold_open = z_score_threshold_open
+        self.__z_score_threshold_close = z_score_threshold_close
         self.__lookback_window = lookback_window
         self.__timeframe = timeframe
         self.__current_date = datetime.datetime.strptime(str(pd.Timestamp.today())[:16], '%Y-%m-%d %H:%M')
@@ -67,12 +68,14 @@ class PairTrade:
 
         return data_df
 
-    def __get_buy_signal(self, pair):
+    def __get_buy_signal(self, pair, new=True):
         """
         Method to determine if a cointegrated pair is worth trading
         :param pair: series containing both ticker symbols of the pair
+        :param new: Boolean indicating whether the buy signal is to be determined for new pairs (True) or pairs that are open positions (False), default=True
         :return: series with information on if pair should be traded and how
         """
+        z_score_threshold = self.__z_score_threshold_open if new else self.__z_score_threshold_close
         data = self.__get_trade_data_pair(list(pair)).filter(regex="vwap")
 
         data["Return_a"] = data.iloc[:, 0].shift(1) - data.iloc[:, 0]
@@ -89,10 +92,10 @@ class PairTrade:
 
         # when Stock_a trades above Stock_b:‚
         if sprd > 0.75:
-          if data['z-scores'].iloc[-1] > self.__z_score_threshold:
+          if data['z-scores'].iloc[-1] > z_score_threshold:
               # short 'Stock_a' and buy 'Stock_b'
               return pd.Series([True, "S", "B"])
-          elif data['z-scores'].iloc[-1] < (-1 * self.__z_score_threshold):
+          elif data['z-scores'].iloc[-1] < (-1 * z_score_threshold):
               # buy 'Stock_a' and short 'Stock_b'
               return pd.Series([True, "B", "S"])
           else:
@@ -100,10 +103,10 @@ class PairTrade:
 
         # when Stock_b trades above Stock_a:
         elif sprd < 0.25:
-          if data['z-scores'].iloc[-1] > self.__z_score_threshold:
+          if data['z-scores'].iloc[-1] > z_score_threshold:
             # buy 'Stock_a' and short 'Stock_b'
             return pd.Series([True, "B", "S"])
-          elif data['z-scores'].iloc[-1] < (-1 * self.__z_score_threshold):
+          elif data['z-scores'].iloc[-1] < (-1 * z_score_threshold):
             # short 'Stock_a' and buy 'Stock_b'
             return pd.Series([True, "S", "B"])
           else:
