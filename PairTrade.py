@@ -231,7 +231,7 @@ class PairTrade:
         :return: dict containing tickers with corresponding position size
         """
         positions = self.__trading_client.get_all_positions()
-        positions_dict = {asset.symbol: int(asset.qty_available) for asset in positions if int(asset.qty_available) != 0}
+        positions_dict = {asset.symbol: int(asset.qty_available) for asset in positions if int(float(asset.qty_available)) != 0}
         return positions_dict
 
     def __adjust_portfolio(self, new_positions, order_type_buy="market", order_type_sell="market"):
