@@ -270,6 +270,38 @@ class PairTrade:
         :param order_type_sell: string that determines which order type is used for decreasing position (default: market order)
         :return: two lists with information on closed and executed trades
         """
+        
+        #adjust based on Database
+        current_positions_db = pd.read_sql("SELECT * FROM Orders WHERE order_type = 'open",mydb)
+        # get trade signal for open pairs
+        current_positions_db[["Signal", "Type_a", "Type_b"]] = current_positions_db[["Stock_a", "Stock_b"]].apply(lambda row:
+                                                                            self.__get_buy_signal(row, new=False), axis=1)
+        for pair in current_positions_db:
+            #close all positions that are below the closing treshold
+            if not pair["Signal"]:
+                # preparing market order
+                order_request_a = OrderRequest(symbol=pair["Stock_a"], qty=pair["Quantity_a"], side=("sell"), type=order_type_sell, time_in_force="day")
+                order_request_b = OrderRequest(symbol=pair["Stock_b"], qty=pair["Quantity_b"], side=("buy"), type=order_type_buy, time_in_force="day")
+                #make order (close pair)
+                adjustment_order_info.append(self.__trading_client.submit_order(order_request_a))
+                adjustment_order_info.append(self.__trading_client.submit_order(order_request_b))
+                try:
+                    cursor = mydb.cursor()
+                    sql = f"UPDATE Orders SET trade_type = 'close' WHERE id = {pair['id']};"
+                    cursor.execute(sql)
+                    mydb.commit()
+                    cursor.close()
+                    mydb.close()
+                except: print("Database insert failed")
+            #TODO: #2 make all the other orders on either order basis or aggregated
+
+
+
+            
+
+
+
+        
         # get current positions
         current_positions = self.__get_positions()
 
