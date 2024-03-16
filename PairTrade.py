@@ -3,12 +3,19 @@ import pandas as pd
 import numpy as np
 import datetime
 import math
+import mysql.connector
 from alpaca.data import StockHistoricalDataClient
 from alpaca.trading.client import TradingClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.requests import OrderRequest, GetCalendarRequest, ClosePositionRequest
 
+mydb = mysql.connector.connect(
+  host="bvj2lnxhoh7x8cl4otz4-mysql.services.clever-cloud.com",
+  user="uvvvha2bcgsfr9ng",
+  password="boMA7txVNyIyLfSx0tp4",
+  database="bvj2lnxhoh7x8cl4otz4"
+)
 
 class PairTrade:
 
@@ -218,6 +225,24 @@ class PairTrade:
                     # order_list = b_s_order_list | b_b_order_list | s_s_order_list
 
                     order_lists = order_list_b_s + order_list_s_b
+
+                    #insert the order list into the database
+                    try:
+                        cursor = mydb.cursor()
+                        for entry in order_lists:
+                            keys = list(entry.keys())
+                            values = list(entry.values())
+                            
+                            sql = "INSERT INTO Orders (Stock_a, Stock_b, Quantity_a, Quantity_b, trade_type) VALUES (%s, %s, %s, %s, %s)"
+                            data = (keys[0], keys[1], values[0], values[1], "open")
+                            
+                            cursor.execute(sql, data)
+
+                        mydb.commit()
+                        cursor.close()
+                        mydb.close()
+                    except: print("Database insert failed")
+
                 else:
                     order_lists = []
             else:
@@ -315,6 +340,7 @@ class PairTrade:
 
 
 if __name__ == "__main__":
+    print(pd.read_sql("SELECT * FROM Orders",mydb))
     keys = a.thore
     App = PairTrade(keys)
     App.trade_pairs()
