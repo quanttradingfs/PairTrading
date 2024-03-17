@@ -14,7 +14,7 @@ mydb = mysql.connector.connect(
   host="bvj2lnxhoh7x8cl4otz4-mysql.services.clever-cloud.com",
   user="uvvvha2bcgsfr9ng",
   password="boMA7txVNyIyLfSx0tp4",
-  database="bvj2lnxhoh7x8cl4otz4"
+  database="bvj2lnxhoh7x8cl4otz4" #port: 3306
 )
 
 class PairTrade:
