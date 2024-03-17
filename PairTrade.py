@@ -28,6 +28,8 @@ class PairTrade:
         self.__timeframe = timeframe
         self.__current_date = datetime.datetime.strptime(str(pd.Timestamp.today())[:16], '%Y-%m-%d %H:%M')
         self.__actual_pairs = pd.read_feather(f"actual_pairs_2024_Q1.feather").sample(3000)
+        self.__trade_data = {ticker: None for ticker in set(list(self.__actual_pairs["Stock_a"]) +
+                                                            list(self.__actual_pairs["Stock_b"]))}
 
     def __get_trade_data_pair(self, symbols, start_date=None, end_date=None, timeframe=None):
         """
@@ -83,7 +85,13 @@ class PairTrade:
         :return: series with information on if pair should be traded and how
         """
         z_score_threshold = self.__z_score_threshold_open if new else self.__z_score_threshold_close
-        data = self.__get_trade_data_pair(list(pair)).filter(regex="vwap")
+        for ticker in list(pair):
+            if self.__trade_data[ticker] is None:
+                self.__trade_data[ticker] = self.__get_trade_data_pair(list(pair)).filter(regex="vwap")
+                data = self.__trade_data[ticker]
+
+            else:
+                data = self.__trade_data[ticker]
 
         data["Return_a"] = data.iloc[:, 0].shift(1) - data.iloc[:, 0]
         data["Return_b"] = data.iloc[:, 1].shift(1) - data.iloc[:, 1]
@@ -94,9 +102,14 @@ class PairTrade:
 
         data['z-scores'] = (data['Spread'] - data['Spread'].mean())/data['Spread'].std()
 
-        # sprd indicates % how often Stock_a trades above Stock_b (sprd>0.5) or vice versa (sprd<0.5)
-        sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count()
+        # calculate spread if amount samples > 0
+        amount_samples = data['Spread'].count()
+        if amount_samples > 0:
+            sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count()
+        else:
+            return pd.Series([False, "F", "F"])
 
+        # sprd indicates % how often Stock_a trades above Stock_b (sprd>0.5) or vice versa (sprd<0.5)
         # when Stock_a trades above Stock_b:‚
         if sprd > 0.75:
           if data['z-scores'].iloc[-1] > z_score_threshold:
@@ -195,34 +208,6 @@ class PairTrade:
                     # create order list for buy-short pairs
                     order_list_b_s = [{row[0]: 1/row[2], row[1]: -1} for row in b_s_pairs[["Stock_a", "Stock_b", "Beta"]].itertuples(index=False)]
                     order_list_s_b = [{row[0]: -1, row[1]: row[2]} for row in s_b_pairs[["Stock_a", "Stock_b", "Beta"]].itertuples(index=False)]
-
-                    # b_s_trades_buy_a = {val[0]: 1/val[1] for key, val in b_s_pairs[b_s_pairs["Type_a"] == "B"][["Stock_a", "Beta"]].T.to_dict("list").items()}
-                    # b_s_trades_buy_b = {val[0]: val[1] for key, val in b_s_pairs[b_s_pairs["Type_b"] == "B"][["Stock_b", "Beta"]].T.to_dict("list").items()}
-                    # b_s_trades_sell_a = {symbol: -1 for symbol in b_s_pairs[b_s_pairs["Type_a"] == "S"]["Stock_a"]}
-                    # b_s_trades_sell_b = {symbol: -1 for symbol in b_s_pairs[b_s_pairs["Type_b"] == "S"]["Stock_b"]}
-
-                    # b_s_order_list = b_s_trades_buy_a | b_s_trades_buy_b | b_s_trades_sell_a | b_s_trades_sell_b
-
-                    # filter for buy-short pairs
-                    # b_b_pairs = traded_pairs[(traded_pairs["Type_a"] == "B") & (traded_pairs["Type_b"] == "B")].copy()
-                    #
-                    # # create order list for buy-buy pairs
-                    # b_b_trades_buy_a = {symbol: 1 for symbol in b_b_pairs["Stock_a"]}
-                    # b_b_trades_buy_b = {row["Stock_b"]: row["Beta"] for row in b_b_pairs[["Stock_b", "Beta"]]}
-                    #
-                    # b_b_order_list = b_b_trades_buy_a | b_b_trades_buy_b
-                    #
-                    # # filter for short-short pairs
-                    # s_s_pairs = traded_pairs[(traded_pairs["Type_a"] == "S") & (traded_pairs["Type_b"] == "S")].copy()
-                    #
-                    # # create order list for buy-buy pairs
-                    # s_s_trades_buy_a = {symbol: 1 for symbol in s_s_pairs["Stock_a"]}
-                    # s_s_trades_buy_b = {row["Stock_b"]: row["Beta"] for row in s_s_pairs[["Stock_b", "Beta"]]}
-                    #
-                    # s_s_order_list = s_s_trades_buy_a | s_s_trades_buy_b
-                    #
-                    # # merge order lists
-                    # order_list = b_s_order_list | b_b_order_list | s_s_order_list
 
                     order_lists = order_list_b_s + order_list_s_b
 
