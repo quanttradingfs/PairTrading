@@ -17,6 +17,7 @@ mydb = mysql.connector.connect(
   database="bvj2lnxhoh7x8cl4otz4" #port: 3306
 )
 
+
 class PairTrade:
 
     def __init__(self, keys, z_score_threshold_open=2, z_score_threshold_close=0.5, lookback_window=30, timeframe=TimeFrame.Hour):
