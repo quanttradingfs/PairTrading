@@ -9,9 +9,10 @@ from alpaca.trading.client import TradingClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.requests import OrderRequest, GetCalendarRequest, ClosePositionRequest
-
 from tqdm import tqdm
+
 tqdm.pandas()
+
 mydb = mysql.connector.connect(
   host="bvj2lnxhoh7x8cl4otz4-mysql.services.clever-cloud.com",
   user="uvvvha2bcgsfr9ng",
