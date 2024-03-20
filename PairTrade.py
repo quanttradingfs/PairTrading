@@ -367,5 +367,7 @@ if __name__ == "__main__":
     keys = a.thore
     App = PairTrade(keys)
     App.trade_pairs()
-    print(pd.read_sql("SELECT * FROM Orders",mydb))
+    try:
+        print(pd.read_sql("SELECT * FROM Orders",mydb))
+    except: 1
     mydb.close()
