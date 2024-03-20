@@ -10,6 +10,8 @@ from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.requests import OrderRequest, GetCalendarRequest, ClosePositionRequest
 
+from tqdm import tqdm
+tqdm.pandas()
 mydb = mysql.connector.connect(
   host="bvj2lnxhoh7x8cl4otz4-mysql.services.clever-cloud.com",
   user="uvvvha2bcgsfr9ng",
@@ -20,7 +22,7 @@ mydb = mysql.connector.connect(
 
 class PairTrade:
 
-    def __init__(self, keys, z_score_threshold_open=2, z_score_threshold_close=0.5, lookback_window=30, timeframe=TimeFrame.Hour):
+    def __init__(self, keys, z_score_threshold_open=1, z_score_threshold_close=0.5, lookback_window=30, timeframe=TimeFrame.Hour):
         self.__stock_client = StockHistoricalDataClient(keys[0], keys[1])
         self.__trading_client = TradingClient(keys[0], keys[1])
         self.__z_score_threshold_open = z_score_threshold_open
@@ -28,7 +30,7 @@ class PairTrade:
         self.__lookback_window = lookback_window
         self.__timeframe = timeframe
         self.__current_date = datetime.datetime.strptime(str(pd.Timestamp.today())[:16], '%Y-%m-%d %H:%M')
-        self.__actual_pairs = pd.read_feather(f"actual_pairs_2024_Q1.feather").sample(3000)
+        self.__actual_pairs = pd.read_feather(f"actual_pairs_2024_Q1.feather").sample(1000)
         self.__trade_data = {ticker: None for ticker in set(list(self.__actual_pairs["Stock_a"]) +
                                                             list(self.__actual_pairs["Stock_b"]))}
 
@@ -178,11 +180,12 @@ class PairTrade:
         if str(most_recent_trading_day) == str(self.__current_date)[:10]:
 
             # get trade signal for pairs
-            self.__actual_pairs[["Signal", "Type_a", "Type_b"]] = self.__actual_pairs[["Stock_a", "Stock_b"]].apply(lambda row:
+            print("getting trade signal for pairs:")
+            self.__actual_pairs[["Signal", "Type_a", "Type_b"]] = self.__actual_pairs[["Stock_a", "Stock_b"]].progress_apply(lambda row:
                                                                             self.__get_buy_signal(row), axis=1)
 
             traded_pairs = self.__actual_pairs[self.__actual_pairs["Signal"]]
-
+            print(traded_pairs)
             # if current day is not a trading day no pairs are traded
             if not traded_pairs.empty:
                 # get price for pairs
@@ -214,19 +217,16 @@ class PairTrade:
 
                     #insert the order list into the database
                     try:
+                        print(order_lists)
                         cursor = mydb.cursor()
                         for entry in order_lists:
                             keys = list(entry.keys())
                             values = list(entry.values())
-                            
                             sql = "INSERT INTO Orders (Stock_a, Stock_b, Quantity_a, Quantity_b, trade_type) VALUES (%s, %s, %s, %s, %s)"
                             data = (keys[0], keys[1], values[0], values[1], "open")
-                            
                             cursor.execute(sql, data)
-
                         mydb.commit()
                         cursor.close()
-                        mydb.close()
                     except: print("Database insert failed")
 
                 else:
@@ -256,30 +256,34 @@ class PairTrade:
         :param order_type_sell: string that determines which order type is used for decreasing position (default: market order)
         :return: two lists with information on closed and executed trades
         """
-        
-        #adjust based on Database
-        current_positions_db = pd.read_sql("SELECT * FROM Orders WHERE order_type = 'open",mydb)
-        # get trade signal for open pairs
-        current_positions_db[["Signal", "Type_a", "Type_b"]] = current_positions_db[["Stock_a", "Stock_b"]].apply(lambda row:
-                                                                            self.__get_buy_signal(row, new=False), axis=1)
-        for pair in current_positions_db:
-            #close all positions that are below the closing treshold
-            if not pair["Signal"]:
-                # preparing market order
-                order_request_a = OrderRequest(symbol=pair["Stock_a"], qty=pair["Quantity_a"], side=("sell"), type=order_type_sell, time_in_force="day")
-                order_request_b = OrderRequest(symbol=pair["Stock_b"], qty=pair["Quantity_b"], side=("buy"), type=order_type_buy, time_in_force="day")
-                #make order (close pair)
-                adjustment_order_info.append(self.__trading_client.submit_order(order_request_a))
-                adjustment_order_info.append(self.__trading_client.submit_order(order_request_b))
-                try:
-                    cursor = mydb.cursor()
-                    sql = f"UPDATE Orders SET trade_type = 'close' WHERE id = {pair['id']};"
-                    cursor.execute(sql)
-                    mydb.commit()
-                    cursor.close()
-                    mydb.close()
-                except: print("Database insert failed")
-            #TODO: #2 make all the other orders on either order basis or aggregated
+        try:
+            #adjust based on Database
+            print("Adjusting portfolio")
+            current_positions_db = pd.read_sql("SELECT * FROM Orders WHERE trade_type = 'open'",mydb)
+            print(current_positions_db)
+            # get trade signal for open pairs
+            current_positions_db[["Signal", "Type_a", "Type_b"]] = current_positions_db[["Stock_a", "Stock_b"]].apply(lambda row:
+                                                                                self.__get_buy_signal(row, new=False), axis=1)
+            adjustment_order_info = []
+            for pair in current_positions_db:
+                #close all positions that are below the closing treshold
+                if not pair["Signal"]:
+                    # preparing market order
+                    order_request_a = OrderRequest(symbol=pair["Stock_a"], qty=pair["Quantity_a"], side=("sell"), type=order_type_sell, time_in_force="day")
+                    order_request_b = OrderRequest(symbol=pair["Stock_b"], qty=pair["Quantity_b"], side=("buy"), type=order_type_buy, time_in_force="day")
+                    #make order (close pair)
+                    adjustment_order_info.append(self.__trading_client.submit_order(order_request_a))
+                    adjustment_order_info.append(self.__trading_client.submit_order(order_request_b))
+                    try:
+                        cursor = mydb.cursor()
+                        sql = f"UPDATE Orders SET trade_type = 'close' WHERE id = {pair['id']};"
+                        cursor.execute(sql)
+                        mydb.commit()
+                        cursor.close()
+                    except: print("Database Update failed")
+                #TODO: #2 make all the other orders on either order basis or aggregated
+                    
+        except: print("Adjust portfolio Database failed")
 
 
 
@@ -358,7 +362,9 @@ class PairTrade:
 
 
 if __name__ == "__main__":
-    print(pd.read_sql("SELECT * FROM Orders",mydb))
+    print(pd.read_sql("SELECT * FROM Orders WHERE trade_type = 'open'",mydb))
     keys = a.thore
     App = PairTrade(keys)
     App.trade_pairs()
+    print(pd.read_sql("SELECT * FROM Orders",mydb))
+    mydb.close()
