@@ -3,3 +3,4 @@ numpy==1.24.3
 pandas==2.1.1
 pyarrow==14.0.1
 mysql-connector==2.2.9
+tqdm==4.66.2
