@@ -23,7 +23,7 @@ class PairFinder:
         self.__potential_pairs_data = None
         self.num_pairs = 0
 
-    def __get_market_data_EQ_Alpaca(self, ticker_industry, start_date=None, end_date=None, timeframe=TimeFrame.Day):
+    def __get_market_data_EQ_Alpaca(self, ticker_sector, start_date=None, end_date=None, timeframe=TimeFrame.Day):
         """
         Method that gets available historical data from Alpaca for tradable US equities that are shortable and no ETFs for
         last year
@@ -32,9 +32,9 @@ class PairFinder:
         search_params = GetAssetsRequest(asset_class=AssetClass.US_EQUITY)
         investable_universe = self.__trading_client.get_all_assets(search_params)
         tickers = sorted([stock.symbol for stock in investable_universe if stock.tradable and stock.shortable and "ETF" not in stock.name
-                          and stock.fractionable and stock.symbol in ticker_industry])
+                          and stock.fractionable and stock.symbol in ticker_sector])
 
-        # return empty df with there are no tradable tickers for industry
+        # return empty df with there are no tradable tickers for sector
         if len(tickers) == 0:
             return pd.DataFrame()
 
@@ -162,8 +162,8 @@ class PairFinder:
 
     def __get_momentum(self, tickers, start_date_mom, end_date_mom):
         """
-        Method to compute momentum for stocks of given industry based on autocorrelation of risk factors gained from PCA
-        :param tickers: list with tickers of given industry
+        Method to compute momentum for stocks of given sector based on autocorrelation of risk factors gained from PCA
+        :param tickers: list with tickers of given sector
         :param start_date_mom:
         :param end_date_mom:
         :return:
@@ -213,9 +213,9 @@ class PairFinder:
         Method to determine if pre-selected pairs are cointegrated
         :return: df with cointegrated pairs and corresponding ß-values
         """
-        # only test pairs that are in same industry
-        tickers_industry = pd.read_csv("tickers.csv", delimiter=",")[["Symbol", "Industry"]]
-        industries = tickers_industry["Industry"].unique()
+        # only test pairs that are in same sector
+        tickers_sector = pd.read_csv("tickers.csv", delimiter=",")[["Symbol", "Sector"]]
+        industries = tickers_sector["Sector"].unique()
         actual_pairs_temp_lst = []
 
         # get all trading days for past 24 month
@@ -230,10 +230,10 @@ class PairFinder:
         start_date = trading_calendar[0].date
         end_date = trading_calendar[-1].date
 
-        for index, industry in enumerate(industries):
-            ticker_industry = list(tickers_industry[tickers_industry["Industry"] == industry]["Symbol"])
+        for index, sector in enumerate(industries):
+            ticker_sector = list(tickers_sector[tickers_sector["Sector"] == sector]["Symbol"])
 
-            self.__potential_pairs_data = self.__get_market_data_EQ_Alpaca(ticker_industry).filter(regex="vwap")
+            self.__potential_pairs_data = self.__get_market_data_EQ_Alpaca(ticker_sector).filter(regex="vwap")
             symbols = sorted([column.split("_")[-1] for column in self.__potential_pairs_data.columns])
 
             if self.__potential_pairs_data.shape[0] == 0 or self.__potential_pairs_data.shape[1] <2:
@@ -256,23 +256,23 @@ class PairFinder:
             potential_pairs[["Cointegrated", "Correlation", "P_Value", "Beta", "Beta_P_Value", "Constant", "Constant_P_Value"]] = \
                             potential_pairs.apply(lambda pair: self.__test_pair(pair), axis=1)
 
-            actual_pairs_industry = potential_pairs[potential_pairs["Cointegrated"]]
+            actual_pairs_sector = potential_pairs[potential_pairs["Cointegrated"]]
 
-            momentum = self.__get_momentum(ticker_industry, start_date, end_date)
+            momentum = self.__get_momentum(ticker_sector, start_date, end_date)
 
             # update momentum for stock_a
             momentum.rename(columns={0: "Momentum_a"}, inplace=True)
-            actual_pairs_industry.set_index("Stock_a", inplace=True)
-            actual_pairs_industry.update(momentum)
-            actual_pairs_industry.reset_index(inplace=True)
+            actual_pairs_sector.set_index("Stock_a", inplace=True)
+            actual_pairs_sector.update(momentum)
+            actual_pairs_sector.reset_index(inplace=True)
 
             # update momentum for stock_b
             momentum.rename(columns={"Momentum_a": "Momentum_b"}, inplace=True)
-            actual_pairs_industry.set_index("Stock_b", inplace=True)
-            actual_pairs_industry.update(momentum)
-            actual_pairs_industry.reset_index(inplace=True)
+            actual_pairs_sector.set_index("Stock_b", inplace=True)
+            actual_pairs_sector.update(momentum)
+            actual_pairs_sector.reset_index(inplace=True)
 
-            actual_pairs_temp_lst.append(actual_pairs_industry)
+            actual_pairs_temp_lst.append(actual_pairs_sector)
 
             self.num_pairs = 0
 
