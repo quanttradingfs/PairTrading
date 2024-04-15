@@ -4,3 +4,4 @@ pandas==2.1.1
 pyarrow==14.0.1
 mysql-connector==2.2.9
 tqdm==4.66.2
+yfinance==0.2.37

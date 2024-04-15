@@ -10,6 +10,7 @@ from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.requests import OrderRequest, GetCalendarRequest, ClosePositionRequest
 from tqdm import tqdm
+import yfinance as yf
 
 tqdm.pandas()
 
@@ -111,33 +112,33 @@ class PairTrade:
         if amount_samples > 0:
             sprd = data['Spread'].fillna(0).gt(0).sum()/data['Spread'].count()
         else:
-            return pd.Series([False, "F", "F"])
+            return pd.Series([False, "F", "F", 0])
 
         # sprd indicates % how often Stock_a trades above Stock_b (sprd>0.5) or vice versa (sprd<0.5)
         # when Stock_a trades above Stock_b:‚
         if sprd > 0.75:
           if data['z-scores'].iloc[-1] > z_score_threshold:
               # short 'Stock_a' and buy 'Stock_b'
-              return pd.Series([True, "S", "B"])
+              return pd.Series([True, "S", "B", data.iloc[-5:, :]["z-scores"].mean()])
           elif data['z-scores'].iloc[-1] < (-1 * z_score_threshold):
               # buy 'Stock_a' and short 'Stock_b'
-              return pd.Series([True, "B", "S"])
+              return pd.Series([True, "B", "S", data.iloc[-5:, :]["z-scores"].mean()])
           else:
-              return pd.Series([False, "F", "F"])
+              return pd.Series([False, "F", "F", data.iloc[-5:, :]["z-scores"].mean()])
 
         # when Stock_b trades above Stock_a:
         elif sprd < 0.25:
           if data['z-scores'].iloc[-1] > z_score_threshold:
             # buy 'Stock_a' and short 'Stock_b'
-            return pd.Series([True, "B", "S"])
+            return pd.Series([True, "B", "S", data.iloc[-5:, :]["z-scores"].mean()])
           elif data['z-scores'].iloc[-1] < (-1 * z_score_threshold):
             # short 'Stock_a' and buy 'Stock_b'
-            return pd.Series([True, "S", "B"])
+            return pd.Series([True, "S", "B", data.iloc[-5:, :]["z-scores"].mean()])
           else:
-            return pd.Series([False, "F", "F"])
+            return pd.Series([False, "F", "F", data.iloc[-5:, :]["z-scores"].mean()])
 
         else:
-            return pd.Series([False, "F", "F"])
+            return pd.Series([False, "F", "F", data.iloc[-5:, :]["z-scores"].mean()])
 
     def __get_current_price(self, row):
         """
@@ -164,6 +165,52 @@ class PairTrade:
         else:
             return pd.Series([np.nan, np.nan])
 
+    def _get_market_cap(self, ticker_a, ticker_b):
+        """
+        Method to get market cap values for two given stock tickers
+        :param ticker_a: str that represents ticker of stock a
+        :param ticker_b: str that represents ticker of stock b
+        :return: list with market cap values for ticker a and b in bln
+        """
+        ticker_a_info = yf.Ticker(ticker_a).info
+        ticker_b_info = yf.Ticker(ticker_b).info
+
+        market_cap_a = -1
+        market_cap_b = -1
+
+        if "marketCap" in ticker_a_info:
+            market_cap_a = round((ticker_a_info['marketCap']/1e9), 3)
+
+        if "marketCap" in ticker_b_info:
+            market_cap_b = round((ticker_b_info['marketCap']/1e9), 3)
+
+        market_cap = [market_cap_a, market_cap_b]
+
+        return market_cap
+
+    def _get_pe_ratio(self, ticker_a, ticker_b):
+        """
+        Method to get pe ratio values for two given stock tickers
+        :param ticker_a: str that represents ticker of stock a
+        :param ticker_b: str that represents ticker of stock b
+        :return: list with pe ratio values for ticker a and b
+        """
+        ticker_a_info = yf.Ticker(ticker_a).info
+        ticker_b_info = yf.Ticker(ticker_b).info
+
+        pe_ratio_a = 0
+        pe_ratio_b = 0
+
+        if "forwardPE" in ticker_a_info:
+            pe_ratio_a = ticker_a_info["forwardPE"]
+
+        if "forwardPE" in ticker_b_info:
+            pe_ratio_b = ticker_b_info["forwardPE"]
+
+        pe_ratio = [pe_ratio_a, pe_ratio_b]
+
+        return pe_ratio
+
     def __create_order_list(self):
         """
         Method that creates an order_list that can be used to re-balance a portfolio
@@ -182,7 +229,7 @@ class PairTrade:
 
             # get trade signal for pairs
             print("getting trade signal for pairs:")
-            self.__actual_pairs[["Signal", "Type_a", "Type_b"]] = self.__actual_pairs[["Stock_a", "Stock_b"]].progress_apply(lambda row:
+            self.__actual_pairs[["Signal", "Type_a", "Type_b", "z-score"]] = self.__actual_pairs[["Stock_a", "Stock_b"]].progress_apply(lambda row:
                                                                             self.__get_buy_signal(row), axis=1)
 
             traded_pairs = self.__actual_pairs[self.__actual_pairs["Signal"]]
@@ -211,8 +258,30 @@ class PairTrade:
                     s_b_pairs = traded_pairs[(traded_pairs["Type_a"] == "S") & (traded_pairs["Type_b"] == "B")].copy()
 
                     # create order list for buy-short pairs
-                    order_list_b_s = [{row[0]: 1/row[2], row[1]: -1} for row in b_s_pairs[["Stock_a", "Stock_b", "Beta"]].itertuples(index=False)]
-                    order_list_s_b = [{row[0]: -1, row[1]: row[2]} for row in s_b_pairs[["Stock_a", "Stock_b", "Beta"]].itertuples(index=False)]
+                    order_list_b_s = [
+                        {
+                            row[0]: [1/row[-1], row[7]], row[1]: [-1, row[8]],
+                            "Correlation": row[2],
+                            "P_Value_Coint": row[3],
+                            "Beta": row[4],
+                            "Beta P_Value": row[5],
+                            "z-score": row[6],
+                            "Sector": row[9]
+                        }
+                        for row in b_s_pairs[["Stock_a", "Stock_b", "Correlation", "P_Value", "Beta", "Beta P_Value",
+                                              "z-score", "Price_a", "Price_b", "Sector"]].itertuples(index=False)]
+                    order_list_s_b = [
+                        {
+                            row[0]: [-1, row[7]], row[1]: [row[-1], row[8]],
+                            "Correlation": row[2],
+                            "P_Value_Coint": row[3],
+                            "Beta": row[4],
+                            "Beta P_Value": row[5],
+                            "z-score": row[6],
+                            "Sector": row[9]
+                        }
+                        for row in s_b_pairs[["Stock_a", "Stock_b", "Correlation", "P_Value", "Beta", "Beta P_Value",
+                                              "z-score", "Price_a", "Price_b", "Sector"]].itertuples(index=False)]
 
                     order_lists = order_list_b_s + order_list_s_b
 
@@ -223,8 +292,16 @@ class PairTrade:
                         for entry in order_lists:
                             keys = list(entry.keys())
                             values = list(entry.values())
-                            sql = "INSERT INTO Orders (Stock_a, Stock_b, Quantity_a, Quantity_b, trade_type) VALUES (%s, %s, %s, %s, %s)"
-                            data = (keys[0], keys[1], values[0], values[1], "open")
+                            market_cap = self.__get_market_cap(keys[0], keys[0])
+                            pe_ratio = self.__get_pe_ratio(keys[0], keys[0])
+                            columns = "Stock_a, Stock_b, Quantity_a, Quantity_b, trade_type, Correlation, P_Value_Coint, " \
+                                      "Beta, Beta P_Value, z-score, sector, price_a_open, price_b_open, price_a_close, " \
+                                      "price_b_close, market_cap_a, market_cap_b, pe_ratio_a, pe_ratio_b"
+                            values_str = "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s"
+                            sql = f"INSERT INTO Orders ({columns}) VALUES ({values_str})"
+                            data = (keys[0], keys[1], values[0][0], values[1][0], "open", values[2], values[3], values[4], values[5],
+                                    values[6], values[7], values[0][1], values[1][1], -1, -1, market_cap[0], market_cap[1],
+                                    pe_ratio[0], pe_ratio[1])
                             cursor.execute(sql, data)
                         mydb.commit()
                         cursor.close()
@@ -283,39 +360,39 @@ class PairTrade:
                         cursor.close()
                     except: print("Database Update failed")
                 #TODO: #2 make all the other orders on either order basis or aggregated
-                    
+
         except: print("Adjust portfolio Database failed")
 
 
 
-            
 
 
 
-        
+
+
         # get current positions
         current_positions = self.__get_positions()
 
         # close positions that are not in new_positions
-        close_positions = [ticker for ticker in current_positions.keys() if ticker not in new_positions.keys()]
+        close_positions = [ticker for ticker in current_positions.keys() if ticker not in list(new_positions.keys())[:2]]
         close_order_info = []
         for ticker in close_positions:
             close_order_info.append(self.__trading_client.close_position(ticker))
 
         # adjust position for each ticker
         adjustment_order_info = []
-        for ticker in new_positions.keys():
+        for ticker in list(new_positions.keys())[:2]:
             # check if already invested and position different
-            if ticker in current_positions.keys() and current_positions[ticker] != new_positions[ticker]:
+            if ticker in current_positions.keys() and current_positions[ticker][0] != new_positions[ticker][0]:
                 # determine if current position needs to be increased or decreased
-                side_info = ("buy", order_type_buy) if new_positions[ticker] > current_positions[ticker] else ("sell", order_type_sell)
+                side_info = ("buy", order_type_buy) if new_positions[ticker][0] > current_positions[ticker] else ("sell", order_type_sell)
 
                 # check if it is enough to liquidate position
-                if math.copysign(1, new_positions[ticker]) != math.copysign(1, current_positions[ticker]):
+                if math.copysign(1, new_positions[ticker][0]) != math.copysign(1, current_positions[ticker]):
                     # check if whole position can be liquidated
-                    if abs(new_positions[ticker]) >= abs(current_positions[ticker]):
+                    if abs(new_positions[ticker][0]) >= abs(current_positions[ticker]):
                         adjustment_order_info.append(self.__trading_client.close_position(ticker))
-                        quantity = new_positions[ticker] + current_positions[ticker]
+                        quantity = new_positions[ticker][0] + current_positions[ticker]
                         order_request = OrderRequest(symbol=ticker, qty=quantity, side=side_info[0], type=side_info[1], time_in_force="day")
                         try:
                             adjustment_order_info.append(self.__trading_client.submit_order(order_request))
@@ -328,12 +405,12 @@ class PairTrade:
 
                     # liquidate only part of position otherwise
                     else:
-                        close_request = ClosePositionRequest(qty=str(abs(new_positions[ticker])))
+                        close_request = ClosePositionRequest(qty=str(abs(new_positions[ticker][0])))
                         adjustment_order_info.append(self.__trading_client.close_position(ticker, close_request))
 
                 # enlarge position otherwise
                 else:
-                    quantity = abs(new_positions[ticker] - current_positions[ticker])
+                    quantity = abs(new_positions[ticker][0] - current_positions[ticker])
                     order_request = OrderRequest(symbol=ticker, qty=quantity, side=side_info[0], type=side_info[1], time_in_force="day")
                     try:
                         adjustment_order_info.append(self.__trading_client.submit_order(order_request))
@@ -342,8 +419,8 @@ class PairTrade:
 
             elif ticker not in current_positions.keys():
                 # send order
-                side = "buy" if new_positions[ticker] >= 0 else "sell"
-                order_request = OrderRequest(symbol=ticker, qty=abs(new_positions[ticker]), side=side, type=order_type_buy, time_in_force="day")
+                side = "buy" if new_positions[ticker][0] >= 0 else "sell"
+                order_request = OrderRequest(symbol=ticker, qty=abs(new_positions[ticker][0]), side=side, type=order_type_buy, time_in_force="day")
                 try:
                     adjustment_order_info.append(self.__trading_client.submit_order(order_request))
                 except:

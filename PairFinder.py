@@ -258,20 +258,21 @@ class PairFinder:
 
             actual_pairs_sector = potential_pairs[potential_pairs["Cointegrated"]]
 
-            momentum = self.__get_momentum(ticker_sector, start_date, end_date)
-
-            # update momentum for stock_a
-            momentum.rename(columns={0: "Momentum_a"}, inplace=True)
-            actual_pairs_sector.set_index("Stock_a", inplace=True)
-            actual_pairs_sector.update(momentum)
-            actual_pairs_sector.reset_index(inplace=True)
-
-            # update momentum for stock_b
-            momentum.rename(columns={"Momentum_a": "Momentum_b"}, inplace=True)
-            actual_pairs_sector.set_index("Stock_b", inplace=True)
-            actual_pairs_sector.update(momentum)
-            actual_pairs_sector.reset_index(inplace=True)
-
+            actual_pairs_sector["Sector"] = sector
+            # momentum = self.__get_momentum(ticker_sector, start_date, end_date)
+            #
+            # # update momentum for stock_a
+            # momentum.rename(columns={0: "Momentum_a"}, inplace=True)
+            # actual_pairs_sector.set_index("Stock_a", inplace=True)
+            # actual_pairs_sector.update(momentum)
+            # actual_pairs_sector.reset_index(inplace=True)
+            #
+            # # update momentum for stock_b
+            # momentum.rename(columns={"Momentum_a": "Momentum_b"}, inplace=True)
+            # actual_pairs_sector.set_index("Stock_b", inplace=True)
+            # actual_pairs_sector.update(momentum)
+            # actual_pairs_sector.reset_index(inplace=True)
+            #
             actual_pairs_temp_lst.append(actual_pairs_sector)
 
             self.num_pairs = 0
